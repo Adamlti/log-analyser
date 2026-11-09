@@ -101,9 +101,20 @@ une erreur HTTP, un timeout, une réponse JSON incorrecte ou un pays absent
 donne `None`. Les erreurs sont journalisées. La disponibilité du service réel
 n'est pas prouvée par le test simulé.
 
-Lors de la future intégration, le champ `country` de la connexion sera rempli
+Dans `main.py`, le champ `country` de la connexion est rempli
 avec `location["country"]` si une localisation existe. Sinon, il restera `None`
 et pourra apparaître dans une catégorie « inconnu » sur le dashboard.
+
+Ce branchement est maintenant dans `main.py` : pour chaque tentative extraite,
+`geo_location(connection["ip"])` fournit le pays, puis
+`stocking.insert_connection(db_connection, connection)` enregistre la connexion
+avec ce pays. Un dictionnaire local évite les appels répétés pour la même IP.
+L'année utilisée est 2026, confirmée pour tous les logs. Aucune fonction ni
+aucun module supplémentaire n'est ajouté. L'exécution réelle de l'API reste
+à autoriser ; les tests utilisent des réponses simulées.
+Les 5 tests du branchement vérifient aussi l'enregistrement du pays dans
+PostgreSQL, avec une table temporaire. Aucun pays simulé n'est gardé dans la
+table publique.
 
 ## Stockage PostgreSQL
 
