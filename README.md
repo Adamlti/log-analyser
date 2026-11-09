@@ -13,8 +13,9 @@ main.py                        Futur assemblage du pipeline complet
 ```
 
 Chaque module est travaillé séparément, testé puis commité avant de passer au
-suivant. `processing` est validé ; l'étape actuelle porte uniquement sur
-`storage`. L'ingestion et le traitement existants sont conservés.
+suivant. `processing` et `storage` sont validés. La correction de l'ingestion
+assure maintenant la lecture de tous les fichiers, avant le futur assemblage
+du pipeline.
 
 ## Règles du code
 
@@ -25,6 +26,21 @@ suivant. `processing` est validé ; l'étape actuelle porte uniquement sur
 - Aucun paquet supplémentaire n'est installé.
 - Chaque fichier possède un `__main__` avec des variables locales fixes pour
   tester ses fonctions sans lancer le pipeline.
+
+## Ingestion : `ingest(path)`
+
+La fonction lit tous les fichiers du dossier dans l'ordre de leurs noms. Elle
+décompresse les archives `.gz`, lit les autres fichiers en texte UTF-8 et ajoute
+leurs lignes à une liste commune avec `rows.extend(...)`. Le seul `return` se
+trouve après la boucle : aucun fichier n'est abandonné après le premier.
+
+Les sous-dossiers sont ignorés. Une erreur de lecture est journalisée avec le
+nom du fichier concerné, puis la lecture des fichiers suivants continue. Un
+dossier vide ou inaccessible donne une liste vide ; l'erreur d'accès est
+journalisée dans ce dernier cas.
+
+La vérification sur les quatre fichiers actuels retrouve 65 565 lignes et
+inclut la connexion réussie d'`adminesisa` présente dans `auth.log.2`.
 
 ## Extraction et transformation
 
@@ -143,16 +159,21 @@ les exemples du `__main__` sont isolés dans une table temporaire.
 Depuis le dossier `log_analyser`, avec l'environnement existant :
 
 ```powershell
+.\.venv\Scripts\python.exe -m ingestion.read
 .\.venv\Scripts\python.exe -m processing.extract_transform
 .\.venv\Scripts\python.exe -m processing.geolocation
 .\.venv\Scripts\python.exe -m storage.stocking
 ```
 
-Le premier `__main__` teste séparément `extract`, `clean_date` et `transform`
+Le `__main__` d'ingestion utilise le chemin local fixe du dossier `data`, puis
+affiche le nombre total de lignes et les dix premières. Il fonctionne aussi
+lorsque le fichier est lancé depuis un autre dossier, sans exécuter le pipeline.
+
+Le `__main__` de `processing.extract_transform` teste `extract`, `clean_date` et `transform`
 avec une ligne, des champs de date et un dictionnaire fixes. Il vérifie les
 résultats avec des assertions, puis les affiche.
 
-Le second teste `geo_location` avec une IP et une réponse JSON locales fixes.
+Celui de `processing.geolocation` teste `geo_location` avec une IP et une réponse JSON locales fixes.
 La réponse HTTP est simulée avec `unittest.mock` : ce test ne contacte pas
 Internet. Aucun argument de commande n'est nécessaire. Importer ces fichiers
 n'exécute pas leurs blocs de test.
@@ -167,6 +188,12 @@ dans `public.connection`.
 Les vérifications supplémentaires utilisent aussi des entrées fixes : réussites,
 échecs, utilisateurs invalides, dates impossibles, années bissextiles, adresses
 IPv4 et IPv6, ports incorrects et erreurs réseau simulées.
+
+Validation d'ingestion : 12 tests réussis sans paquet externe. Ils vérifient
+la collecte des fichiers texte et gzip, l'encodage UTF-8, les archives invalides,
+les erreurs d'accès, les journaux, les quatre fichiers réels et la présence de la
+connexion réussie. Les variables initialisées au début et le retour unique à la
+fin sont également vérifiés.
 
 Validation de `processing` : 24 tests réussis avec les paquets externes désactivés
 (`python -S`). Les règles sur l'initialisation des variables et le retour unique
@@ -184,6 +211,7 @@ Les fonctions utilisent le logger de leur module. Les lancements locaux
 configurent l'affichage des messages et leur écriture dans :
 
 ```text
+logs/ingestion.log
 logs/extract_transform.log
 logs/geolocation.log
 logs/stocking.log
