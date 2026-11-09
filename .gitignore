@@ -14,3 +14,6 @@ logs/
 
 # Paramètres PostgreSQL propres à cette machine
 /storage/database.local.json
+
+# Graphiques générés localement
+/reports/

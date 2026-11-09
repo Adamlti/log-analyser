@@ -8,14 +8,14 @@ ingestion/read.py              Lecture et décompression des fichiers
 processing/extract_transform.py Extraction, nettoyage de date et transformation
 processing/geolocation.py      Recherche du pays d'une IP publique
 storage/stocking.py             Stockage PostgreSQL
-serving/                       Futurs graphiques matplotlib
+serving/dashboard.py           Comptages et graphiques matplotlib
 main.py                        Futur assemblage du pipeline complet
 ```
 
 Chaque module est travaillé séparément, testé puis commité avant de passer au
-suivant. `processing` et `storage` sont validés. La correction de l'ingestion
-assure maintenant la lecture de tous les fichiers, avant le futur assemblage
-du pipeline.
+suivant. Les modules sont validés séparément. L'ingestion lit tous les fichiers,
+et `serving` génère les trois graphiques demandés. L'assemblage du pipeline
+dans `main.py` reste à réaliser.
 
 ## Règles du code
 
@@ -23,6 +23,7 @@ du pipeline.
 - Chaque fonction possède un seul `return`, placé à la fin.
 - `processing` utilise uniquement la bibliothèque standard de Python.
 - `storage` utilise `psycopg2`, déjà installé dans l'environnement du projet.
+- `serving` utilise `matplotlib`, déjà installé et demandé pour les graphiques.
 - Aucun paquet supplémentaire n'est installé.
 - Chaque fichier possède un `__main__` avec des variables locales fixes pour
   tester ses fonctions sans lancer le pipeline.
@@ -154,6 +155,43 @@ ORDER BY id;
 La table publique reste vide tant que de vraies données n'ont pas été insérées :
 les exemples du `__main__` sont isolés dans une table temporaire.
 
+## Serving : les graphiques matplotlib
+
+`serving/dashboard.py` reçoit les dictionnaires de connexions que le stockage
+peut renvoyer avec `read_connections`. Le module ne contacte ni PostgreSQL
+ni le service de géolocalisation.
+
+| Fonction | Résultat |
+| --- | --- |
+| `count_failed_by_country(connections)` | Nombre de lignes `failed` par pays |
+| `count_success_by_user(connections)` | Nombre de lignes `success` par utilisateur |
+| `count_invalid_user_failures(connections)` | Nombre de lignes `failed` avec `invalid_user=True`, par nom invalide |
+| `create_dashboard(failed_by_country, success_by_user, invalid_user_failures)` | Figure matplotlib contenant les trois graphiques |
+
+Les pays absents ou vides sont regroupés sous `Inconnu`. Les codes pays sont
+normalisés en majuscules. Un nom d'utilisateur vide est affiché sous
+`(utilisateur vide)`. Les tentatives répétées restent comptées séparément.
+
+Chaque compteur retourne un dictionnaire, ou `None` si son entrée n'est pas
+une liste ou un tuple. Les lignes incorrectes sont signalées dans les journaux
+et ignorées. Une liste vide donne un dictionnaire vide ; une erreur de lecture
+du stockage (`None`) ne devient donc pas un faux résultat sans événement.
+
+Les trois graphiques utilisent des barres verticales avec `Axes.bar()` de
+matplotlib. Les nombres sont affichés au-dessus des barres et les graduations
+sont entières. Chaque graphique affiche son total. Une série vide porte le
+message `Aucune tentative`.
+
+Tous les pays et tous les utilisateurs ayant réussi sont représentés. Pour
+garder le troisième graphique lisible, les dix noms invalides les plus fréquents
+sont affichés, puis les autres sont additionnés dans une barre
+`Autres utilisateurs`. Le compteur conserve tous les noms et le total du
+graphique inclut tous les échecs avec utilisateur invalide.
+
+`create_dashboard` retourne une figure sans ouvrir de fenêtre et sans modifier
+les comptes reçus. L'appelant peut l'enregistrer avec `.savefig(...)`. Le futur
+`main.py` devra fournir les connexions réelles lues depuis PostgreSQL.
+
 ## Tests locaux des modules
 
 Depuis le dossier `log_analyser`, avec l'environnement existant :
@@ -163,6 +201,7 @@ Depuis le dossier `log_analyser`, avec l'environnement existant :
 .\.venv\Scripts\python.exe -m processing.extract_transform
 .\.venv\Scripts\python.exe -m processing.geolocation
 .\.venv\Scripts\python.exe -m storage.stocking
+.\.venv\Scripts\python.exe -m serving.dashboard
 ```
 
 Le `__main__` d'ingestion utilise le chemin local fixe du dossier `data`, puis
@@ -185,6 +224,13 @@ puis une table temporaire du même nom reçoit les exemples. Cette table
 temporaire disparaît quand la connexion se ferme ; aucun exemple n'est conservé
 dans `public.connection`.
 
+Le `__main__` de `serving.dashboard` teste les quatre fonctions avec des
+variables locales fixes. Le jeu d'exemple contient cinq échecs, trois réussites
+et quatre échecs avec utilisateur invalide. Les assertions vérifient les
+compteurs, puis le module enregistre `reports/dashboard_test.png` avec les trois
+graphiques. Cette image porte la mention « données de test » ; elle ne représente
+pas les événements réels de la base. Aucun argument ni accès réseau n'est requis.
+
 Les vérifications supplémentaires utilisent aussi des entrées fixes : réussites,
 échecs, utilisateurs invalides, dates impossibles, années bissextiles, adresses
 IPv4 et IPv6, ports incorrects et erreurs réseau simulées.
@@ -205,6 +251,12 @@ au moment du commit, les adresses IPv4 et IPv6, les pays inconnus, les paramètr
 SQL, les journaux et les règles de structure des fonctions. Les données de ces
 vérifications sont isolées et retirées à la fin des essais.
 
+Validation de `serving` : 25 tests réussis, dont les comptes exacts, les barres
+verticales matplotlib, les graduations entières, les pays inconnus, les entrées
+incorrectes, les séries vides, les utilisateurs invalides regroupés sans perte
+du total et l'export PNG. La structure des fonctions et l'absence d'installation
+supplémentaire sont également vérifiées. Le rendu a été inspecté visuellement.
+
 ## Journaux
 
 Les fonctions utilisent le logger de leur module. Les lancements locaux
@@ -215,16 +267,19 @@ logs/ingestion.log
 logs/extract_transform.log
 logs/geolocation.log
 logs/stocking.log
+logs/dashboard.log
 ```
 
 Ces fichiers locaux sont ignorés par Git. Le futur point d'entrée `main.py`
 devra aussi configurer la journalisation pour les appels du pipeline complet.
+Les graphiques générés dans `reports/` sont également ignorés par Git.
 
 ## Étapes suivantes
 
-- Créer les graphiques matplotlib : échecs par pays, réussites par utilisateur
-  et échecs avec `invalid user`.
 - Assembler les modules puis tester le pipeline via `main.py`.
+- Fournir l'année réelle des logs et appliquer la géolocalisation avant le
+  stockage des connexions utilisées par les graphiques.
 
-Le travail s'arrête après la validation et le commit de `storage`, avant de
-commencer `serving`. La consigne de rendu reste : aucun push après mardi 10.
+Le travail s'arrête après la validation et le commit de `serving`, avant de
+commencer l'intégration dans `main.py`. La consigne de rendu reste : aucun push
+après mardi 10.
