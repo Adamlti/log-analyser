@@ -121,7 +121,6 @@ def transform(record, year):
 
 
 if __name__ == "__main__":
-    # Valeurs locales fixes pour tester chaque fonction séparément.
     test_row = (
         "May 24 00:28:00 ns sshd[1351222]: Failed password for invalid user "
         "test from 45.156.87.204 port 41740 ssh2"
