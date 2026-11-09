@@ -11,3 +11,6 @@ wheels/
 
 # Journaux locaux de l'application
 logs/
+
+# Paramètres PostgreSQL propres à cette machine
+/storage/database.local.json

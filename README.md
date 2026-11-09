@@ -7,20 +7,21 @@ data/                          Fichiers auth.log et archives .gz
 ingestion/read.py              Lecture et décompression des fichiers
 processing/extract_transform.py Extraction, nettoyage de date et transformation
 processing/geolocation.py      Recherche du pays d'une IP publique
-storage/                       Futur stockage PostgreSQL
+storage/stocking.py             Stockage PostgreSQL
 serving/                       Futurs graphiques matplotlib
 main.py                        Futur assemblage du pipeline complet
 ```
 
 Chaque module est travaillé séparément, testé puis commité avant de passer au
-suivant. L'étape actuelle porte uniquement sur `processing` ; l'ingestion
-existante est conservée.
+suivant. `processing` est validé ; l'étape actuelle porte uniquement sur
+`storage`. L'ingestion et le traitement existants sont conservés.
 
 ## Règles du code
 
 - Les variables locales sont initialisées au début de chaque fonction.
 - Chaque fonction possède un seul `return`, placé à la fin.
 - `processing` utilise uniquement la bibliothèque standard de Python.
+- `storage` utilise `psycopg2`, déjà installé dans l'environnement du projet.
 - Aucun paquet supplémentaire n'est installé.
 - Chaque fichier possède un `__main__` avec des variables locales fixes pour
   tester ses fonctions sans lancer le pipeline.
@@ -38,7 +39,7 @@ avertissement.
 ### `clean_date(month, day, time, year)`
 
 Convertit les éléments de date en objet `datetime`, directement utilisable par
-le futur stockage PostgreSQL. Les dates impossibles, comme le 31 février, sont
+le stockage PostgreSQL. Les dates impossibles, comme le 31 février, sont
 rejetées et signalées dans les logs.
 
 Les fichiers `auth.log` ne contiennent ni année ni fuseau horaire. L'appelant
@@ -87,6 +88,56 @@ Lors de la future intégration, le champ `country` de la connexion sera rempli
 avec `location["country"]` si une localisation existe. Sinon, il restera `None`
 et pourra apparaître dans une catégorie « inconnu » sur le dashboard.
 
+## Stockage PostgreSQL
+
+La base locale `log_analyser` a été préparée sur `localhost:5432`. Le module
+travaille dans cette base, avec une table nommée `connection`. Sur une autre
+machine, la base doit exister avant le lancement du module.
+
+### Configuration locale
+
+Le fichier `storage/database.example.json` décrit les paramètres attendus :
+`host`, `port`, `dbname`, `user`, `password`. Créer le fichier
+`storage/database.local.json` à partir de ce modèle et y renseigner les valeurs
+locales. Ce poste possède déjà ce fichier ; il est ignoré par Git.
+Le mot de passe ne figure ni dans le code du module ni dans le modèle versionné.
+
+### Fonctions
+
+| Fonction | Résultat |
+| --- | --- |
+| `connect_database(config)` | Connexion ouverte, ou `None` si elle échoue |
+| `create_table(db_connection)` | `True` si la table existe ou a été créée, sinon `False` |
+| `insert_connection(db_connection, record)` | Identifiant de la ligne validée, ou `None` en cas d'erreur |
+| `read_connections(db_connection)` | Liste de dictionnaires, `[]` si la table est vide, `None` en cas d'erreur |
+
+La table contient `id`, `status`, `date`, `user`, `country`, `ip` et
+`invalid_user`. La date est stockée en `TIMESTAMP WITHOUT TIME ZONE`, l'IP en
+`INET` et le marqueur d'utilisateur invalide en booléen. Le statut doit être
+`failed` ou `success`. Un pays inconnu est enregistré en `NULL`.
+
+Les données sont transmises par paramètres SQL. Le champ `user` est cité dans
+les requêtes car ce nom a aussi un sens particulier en SQL. Une création
+répétée ne supprime pas les données ; les tentatives répétées restent des lignes
+distinctes. Les champs supplémentaires du traitement, comme le port ou la
+méthode d'authentification, ne sont pas stockés dans cette table.
+
+Chaque opération gère sa transaction : une réussite est validée, une erreur SQL
+déclenche un rollback. L'insertion ne retourne un identifiant qu'après la
+réussite du commit. L'appelant doit fermer la connexion avec `.close()`.
+
+Pour voir les données dans l'outil de requêtes de pgAdmin, une fois connecté à
+la base `log_analyser` :
+
+```sql
+SELECT id, status, date, "user", country, ip, invalid_user
+FROM public.connection
+ORDER BY id;
+```
+
+La table publique reste vide tant que de vraies données n'ont pas été insérées :
+les exemples du `__main__` sont isolés dans une table temporaire.
+
 ## Tests locaux des modules
 
 Depuis le dossier `log_analyser`, avec l'environnement existant :
@@ -94,6 +145,7 @@ Depuis le dossier `log_analyser`, avec l'environnement existant :
 ```powershell
 .\.venv\Scripts\python.exe -m processing.extract_transform
 .\.venv\Scripts\python.exe -m processing.geolocation
+.\.venv\Scripts\python.exe -m storage.stocking
 ```
 
 Le premier `__main__` teste séparément `extract`, `clean_date` et `transform`
@@ -105,13 +157,26 @@ La réponse HTTP est simulée avec `unittest.mock` : ce test ne contacte pas
 Internet. Aucun argument de commande n'est nécessaire. Importer ces fichiers
 n'exécute pas leurs blocs de test.
 
+Le `__main__` de `storage.stocking` teste les quatre fonctions avec des données
+fixes : un échec avec utilisateur invalide et une réussite. La connexion et les
+requêtes utilisent PostgreSQL réel. La table publique est créée ou vérifiée,
+puis une table temporaire du même nom reçoit les exemples. Cette table
+temporaire disparaît quand la connexion se ferme ; aucun exemple n'est conservé
+dans `public.connection`.
+
 Les vérifications supplémentaires utilisent aussi des entrées fixes : réussites,
 échecs, utilisateurs invalides, dates impossibles, années bissextiles, adresses
 IPv4 et IPv6, ports incorrects et erreurs réseau simulées.
 
-Dernière validation : 24 tests réussis avec les paquets externes désactivés
+Validation de `processing` : 24 tests réussis avec les paquets externes désactivés
 (`python -S`). Les règles sur l'initialisation des variables et le retour unique
 en fin de fonction ont également été vérifiées.
+
+Validation de `storage` : 26 tests réussis. Ils couvrent notamment la persistance
+entre deux connexions PostgreSQL, les retours arrière après erreur SQL, un échec
+au moment du commit, les adresses IPv4 et IPv6, les pays inconnus, les paramètres
+SQL, les journaux et les règles de structure des fonctions. Les données de ces
+vérifications sont isolées et retirées à la fin des essais.
 
 ## Journaux
 
@@ -121,6 +186,7 @@ configurent l'affichage des messages et leur écriture dans :
 ```text
 logs/extract_transform.log
 logs/geolocation.log
+logs/stocking.log
 ```
 
 Ces fichiers locaux sont ignorés par Git. Le futur point d'entrée `main.py`
@@ -128,10 +194,9 @@ devra aussi configurer la journalisation pour les appels du pipeline complet.
 
 ## Étapes suivantes
 
-- Stocker les connexions dans une table PostgreSQL nommée `connection`.
 - Créer les graphiques matplotlib : échecs par pays, réussites par utilisateur
   et échecs avec `invalid user`.
 - Assembler les modules puis tester le pipeline via `main.py`.
 
-Le travail s'arrête après la validation et le commit de `processing`, avant
-de commencer le stockage. La consigne de rendu reste : aucun push après mardi 10.
+Le travail s'arrête après la validation et le commit de `storage`, avant de
+commencer `serving`. La consigne de rendu reste : aucun push après mardi 10.

@@ -1,0 +1,7 @@
+{
+    "host": "localhost",
+    "port": 5432,
+    "dbname": "log_analyser",
+    "user": "postgres",
+    "password": ""
+}
