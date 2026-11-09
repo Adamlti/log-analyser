@@ -1,4 +1,4 @@
-"""Créer la table connection et stocker les tentatives d'authentification."""
+"""Créer la table connection et stocker les tentatives d'authentification"""
 
 import json
 import logging

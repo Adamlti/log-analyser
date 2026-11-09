@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ingestion import read
 from processing import extract_transform, geolocation
+from serving import dashboard
 from storage import stocking
 
 
@@ -21,6 +22,12 @@ if __name__ == "__main__":
     location = None
     countries = {}
     inserted = 0
+    stored_connections = None
+    failed_counts = None
+    success_counts = None
+    invalid_counts = None
+    figure = None
+    report_path = project_path / "reports" / "dashboard.png"
     log_directory = project_path / "logs"
 
     log_directory.mkdir(exist_ok=True)
@@ -52,5 +59,23 @@ if __name__ == "__main__":
             if stocking.insert_connection(db_connection, connection) is not None:
                 inserted += 1
         print("Connexions enregistrées :", inserted)
+        stored_connections = stocking.read_connections(db_connection)
+        if stored_connections is None:
+            raise SystemExit("Lecture de la table connection impossible")
+        failed_counts = dashboard.count_failed_by_country(stored_connections)
+        success_counts = dashboard.count_success_by_user(stored_connections)
+        invalid_counts = dashboard.count_invalid_user_failures(stored_connections)
+        figure = dashboard.create_dashboard(failed_counts, success_counts, invalid_counts)
+        if figure is None:
+            raise SystemExit("Création des graphiques impossible")
+        report_path.parent.mkdir(exist_ok=True)
+        figure.savefig(report_path, dpi=140)
+        print("Échecs par pays :", failed_counts)
+        print("Réussites par utilisateur :", success_counts)
+        print("Échecs avec invalid user :", sum(invalid_counts.values()))
+        print("Graphiques :", report_path)
+    except (OSError, ValueError):
+        logging.exception("Le pipeline n'a pas pu se terminer")
+        raise
     finally:
         db_connection.close()
