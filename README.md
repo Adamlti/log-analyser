@@ -9,13 +9,14 @@ processing/extract_transform.py Extraction, nettoyage de date et transformation
 processing/geolocation.py      Recherche du pays d'une IP publique
 storage/stocking.py             Stockage PostgreSQL
 serving/dashboard.py           Comptages et graphiques matplotlib
-main.py                        Futur assemblage du pipeline complet
+main.py                        Pipeline complet jusqu'aux graphiques
 ```
 
 Chaque module est travaillé séparément, testé puis commité avant de passer au
 suivant. Les modules sont validés séparément. L'ingestion lit tous les fichiers,
-et `serving` génère les trois graphiques demandés. L'assemblage du pipeline
-dans `main.py` reste à réaliser.
+et `serving` génère les trois graphiques demandés. `main.py` assemble les modules.
+Le pipeline est vérifié localement avec une API simulée ; la géolocalisation
+réelle reste à terminer.
 
 ## Règles du code
 
@@ -61,8 +62,8 @@ rejetées et signalées dans les logs.
 
 Les fichiers `auth.log` ne contiennent ni année ni fuseau horaire. L'appelant
 doit donc fournir l'année ; la fonction ne la devine pas. Le résultat est une
-date sans fuseau horaire ajouté. L'année 2026 dans le `__main__` est uniquement
-une valeur de test à adapter à l'année réelle des logs.
+date sans fuseau horaire ajouté. L'année 2026 a été confirmée pour tous les logs
+de ce projet et est fournie explicitement par `main.py`.
 
 ### `transform(record, year)`
 
@@ -100,6 +101,12 @@ Une adresse non publique n'entraîne aucun appel réseau. Une adresse invalide,
 une erreur HTTP, un timeout, une réponse JSON incorrecte ou un pays absent
 donne `None`. Les erreurs sont journalisées. La disponibilité du service réel
 n'est pas prouvée par le test simulé.
+
+Un HTTP 429 est propagé au point d'entrée : le traitement s'arrête au lieu de
+continuer à insérer des pays inconnus à cause du quota. Les pays déjà enregistrés
+sont réutilisés lors de la reprise. L'API publique sans compte est limitée à
+1 000 appels par jour, selon la
+[documentation IPinfo](https://support.ipinfo.io/hc/en-us/articles/30792479436562-What-Is-the-Difference-Between-Using-the-Authenticated-Free-Plan-and-the-Public-API-With-No-Account).
 
 Dans `main.py`, le champ `country` de la connexion est rempli
 avec `location["country"]` si une localisation existe. Sinon, il restera `None`
@@ -163,8 +170,8 @@ FROM public.connection
 ORDER BY id;
 ```
 
-La table publique reste vide tant que de vraies données n'ont pas été insérées :
-les exemples du `__main__` sont isolés dans une table temporaire.
+Les exemples du `__main__` et les tests automatisés sont isolés dans une table
+temporaire. La table publique conserve les événements importés par l'application.
 
 ## Serving : les graphiques matplotlib
 
@@ -200,8 +207,9 @@ sont affichés, puis les autres sont additionnés dans une barre
 graphique inclut tous les échecs avec utilisateur invalide.
 
 `create_dashboard` retourne une figure sans ouvrir de fenêtre et sans modifier
-les comptes reçus. L'appelant peut l'enregistrer avec `.savefig(...)`. Le futur
-`main.py` devra fournir les connexions réelles lues depuis PostgreSQL.
+les comptes reçus. L'appelant peut l'enregistrer avec `.savefig(...)`. `main.py`
+fournit les connexions relues depuis PostgreSQL puis enregistre les graphiques
+dans `reports/dashboard.png`.
 
 ## Tests locaux des modules
 
@@ -268,6 +276,27 @@ incorrectes, les séries vides, les utilisateurs invalides regroupés sans perte
 du total et l'export PNG. La structure des fonctions et l'absence d'installation
 supplémentaire sont également vérifiées. Le rendu a été inspecté visuellement.
 
+## Test du pipeline via main.py
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+Ce lancement contacte IPinfo pour les IP publiques sans pays connu. Il réutilise
+les fonctions existantes : ingestion, extraction, date, géolocalisation,
+insertion, lecture puis comptage et graphiques matplotlib.
+
+Les événements déjà présents sont reconnus pour reprendre un import partiel
+sans les réinsérer. Les pays manquants sont complétés par IP quand l'API fournit
+une réponse. Les occurrences répétées dans les sources restent conservées.
+
+Huit tests du pipeline passent avec une API simulée et PostgreSQL temporaire.
+Ils vérifient la reprise depuis un import partiel, les pays enregistrés, l'arrêt
+sur HTTP 429, les erreurs de connexion et les graphiques. Les totaux retrouvés
+sont 9 092 échecs, une réussite pour `adminesisa` et 3 253 échecs avec utilisateur
+invalide. L'aperçu `reports/dashboard_pipeline_test.png` est marqué comme test ;
+ses pays ne sont pas des résultats réels de géolocalisation.
+
 ## Journaux
 
 Les fonctions utilisent le logger de leur module. Les lancements locaux
@@ -279,18 +308,17 @@ logs/extract_transform.log
 logs/geolocation.log
 logs/stocking.log
 logs/dashboard.log
+logs/pipeline.log
 ```
 
-Ces fichiers locaux sont ignorés par Git. Le futur point d'entrée `main.py`
-devra aussi configurer la journalisation pour les appels du pipeline complet.
+Ces fichiers locaux sont ignorés par Git. `main.py` configure aussi les journaux
+du pipeline avec le nom du module dans chaque message.
 Les graphiques générés dans `reports/` sont également ignorés par Git.
 
 ## Étapes suivantes
 
-- Assembler les modules puis tester le pipeline via `main.py`.
-- Fournir l'année réelle des logs et appliquer la géolocalisation avant le
-  stockage des connexions utilisées par les graphiques.
+- Obtenir l'accord d'envoi des IP publiques à IPinfo et reprendre la
+  géolocalisation réelle lorsque le service accepte les requêtes.
+- Vérifier les pays réels dans PostgreSQL et le graphique correspondant.
 
-Le travail s'arrête après la validation et le commit de `serving`, avant de
-commencer l'intégration dans `main.py`. La consigne de rendu reste : aucun push
-après mardi 10.
+La consigne de rendu reste : aucun push après mardi 10.

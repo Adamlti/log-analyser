@@ -17,6 +17,7 @@ def geo_location(ip):
     response = None
     payload = None
     url = None
+    error = None
 
     if isinstance(ip, str):
         try:
@@ -43,7 +44,11 @@ def geo_location(ip):
                         logger.warning("Réponse sans pays pour %s", address)
                 else:
                     logger.error("Erreur HTTP %s pour %s", response.status, address)
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError):
+        except HTTPError as error:
+            logger.exception("Échec de géolocalisation pour %s", address)
+            if error.code == 429:
+                raise
+        except (URLError, TimeoutError, OSError, ValueError):
             logger.exception("Échec de géolocalisation pour %s", address)
     elif address is not None:
         logger.info("IP non publique, géolocalisation ignorée : %s", address)

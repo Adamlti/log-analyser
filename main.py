@@ -1,5 +1,6 @@
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 
 from ingestion import read
@@ -21,6 +22,10 @@ if __name__ == "__main__":
     connection = None
     location = None
     countries = {}
+    existing_attempts = Counter()
+    updated_ips = set()
+    key = None
+    cursor = None
     inserted = 0
     stored_connections = None
     failed_counts = None
@@ -44,6 +49,17 @@ if __name__ == "__main__":
     try:
         if not stocking.create_table(db_connection):
             raise SystemExit("Création de la table connection impossible")
+        stored_connections = stocking.read_connections(db_connection)
+        if stored_connections is None:
+            raise SystemExit("Lecture de la table connection impossible")
+        for connection in stored_connections:
+            key = (
+                connection["status"], connection["date"], connection["user"],
+                connection["ip"], connection["invalid_user"],
+            )
+            existing_attempts[key] += 1
+            if connection["country"]:
+                countries[connection["ip"]] = connection["country"]
         rows = read.ingest(project_path / "data")
         for row in rows:
             record = extract_transform.extract(row)
@@ -56,6 +72,21 @@ if __name__ == "__main__":
                 location = geolocation.geo_location(connection["ip"])
                 countries[connection["ip"]] = location["country"] if location else None
             connection["country"] = countries[connection["ip"]]
+            if connection["country"] and connection["ip"] not in updated_ips:
+                with db_connection:
+                    with db_connection.cursor() as cursor:
+                        cursor.execute(
+                            "UPDATE connection SET country = %s WHERE ip = %s AND country IS NULL",
+                            (connection["country"], connection["ip"]),
+                        )
+                updated_ips.add(connection["ip"])
+            key = (
+                connection["status"], connection["date"], connection["user"],
+                connection["ip"], connection["invalid_user"],
+            )
+            if existing_attempts[key] > 0:
+                existing_attempts[key] -= 1
+                continue
             if stocking.insert_connection(db_connection, connection) is not None:
                 inserted += 1
         print("Connexions enregistrées :", inserted)
