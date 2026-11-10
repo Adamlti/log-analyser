@@ -16,8 +16,8 @@ Chaque module est travaillé séparément, testé puis commité avant de passer 
 suivant. Les modules sont validés séparément. L'ingestion lit tous les fichiers,
 et `serving` génère les trois graphiques demandés. `main.py` assemble les modules.
 Le pipeline est vérifié localement avec une API simulée et avec les pays réels
-obtenus auprès d'IPinfo Lite. La correction des copies en trop dans PostgreSQL
-reste en attente d'autorisation.
+obtenus auprès d'IPinfo Lite. La table PostgreSQL correspond aux occurrences des
+quatre fichiers sources, y compris leurs répétitions réelles.
 
 ## Règles du code
 
@@ -333,20 +333,22 @@ Les 1 853 IP publiques ont été interrogées auprès d'IPinfo Lite, une IP par
 requête. Leurs pays sont enregistrés dans PostgreSQL : 88 pays distincts sont
 présents. L'IP privée `10.10.33.81` n'a pas de pays et n'est pas envoyée à l'API.
 
-La comparaison des occurrences avec les quatre fichiers sources retrouve
-27 186 lignes dans `public.connection`, dont 10 824 copies en trop. Aucune
-occurrence attendue ne manque. L'origine de ces copies n'est pas confirmée.
-Les véritables répétitions indiquées dans les logs doivent être conservées.
+La table `public.connection` contient les 16 362 occurrences attendues :
+16 361 échecs, une réussite pour `adminesisa` et 3 253 échecs avec utilisateur
+invalide. La comparaison avec les quatre fichiers sources ne trouve aucune
+occurrence manquante ni supplémentaire.
 
-L'aperçu local `reports/dashboard_verified.png` utilise les pays réels et les
-16 362 occurrences attendues, sélectionnées en lecture seule : 16 361 échecs,
-une réussite pour `adminesisa` et 3 253 échecs avec utilisateur invalide.
+Les 10 824 copies supplémentaires détectées lors de la vérification ont été
+archivées dans `public.connection_duplicate_archive_20261110`, puis retirées
+de la table active dans une seule transaction. Les 439 lignes initiales et les
+véritables répétitions des logs sont conservées. Le plan et le résultat de
+l'opération sont disponibles localement dans
+`reports/duplicate_repair_plan.json` et `reports/duplicate_repair_result.json`.
 
-Le plan local `reports/duplicate_repair_plan.json` identifie précisément les
-10 824 copies proposées pour archivage dans
-`public.connection_duplicate_archive_20261110`, puis retrait de la table active.
-Il préserve les 439 lignes initiales. Cette opération n'a pas été exécutée et
-attend une autorisation explicite ; la table active conserve ses 27 186 lignes.
+La relance de `main.py` sur cette base a produit zéro insertion et zéro requête
+HTTP, contrôlées avec un appel réseau interdit pendant ce test. Le graphique
+final `reports/dashboard.png` est généré depuis les données réelles de la base.
+Son rendu et les trois totaux ont été vérifiés.
 
 ## Journaux
 
@@ -365,12 +367,5 @@ logs/pipeline.log
 Ces fichiers locaux sont ignorés par Git. `main.py` configure aussi les journaux
 du pipeline avec le nom du module dans chaque message.
 Les graphiques générés dans `reports/` sont également ignorés par Git.
-
-## Étapes suivantes
-
-- Après autorisation, archiver les copies identifiées puis les retirer de la
-  table active en conservant les répétitions réelles.
-- Relancer le pipeline pour vérifier qu'aucune insertion ni requête IPinfo
-  supplémentaire n'est nécessaire et générer le graphique final depuis la base.
 
 La consigne de rendu reste : aucun push après mardi 10.
