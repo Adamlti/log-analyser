@@ -72,6 +72,11 @@ def transform(record, year):
     address = None
     port = None
     date = None
+    count = 1
+    repeated = None
+    repeated_pattern = re.compile(
+        r"^message repeated (?P<count>\d+) times: \[\s*(?P<message>.*)\]$"
+    )
     pattern = re.compile(
         r"^(?P<result>Failed|Accepted)\s+(?P<method>\S+)\s+for\s+"
         r"(?P<invalid_user>invalid user\s+)?(?P<user>.*?)\s+"
@@ -85,6 +90,10 @@ def transform(record, year):
         if not isinstance(message, str):
             logger.warning("Message SSH absent ou invalide : %r", record)
         else:
+            repeated = re.search(repeated_pattern, message)
+            if repeated:
+                count = int(repeated["count"])
+                message = repeated["message"].strip()
             match = re.search(pattern, message)
             if match is None and message.startswith(("Failed ", "Accepted ")):
                 logger.warning("Tentative SSH non reconnue : %r", message)
@@ -115,6 +124,7 @@ def transform(record, year):
                 "port": port,
                 "method": fields["method"],
                 "invalid_user": fields["invalid_user"] is not None,
+                "count": count,
             }
 
     return connection

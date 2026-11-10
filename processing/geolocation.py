@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from ipaddress import ip_address
 from pathlib import Path
 from urllib import request as http
@@ -18,6 +19,9 @@ def geo_location(ip):
     payload = None
     url = None
     error = None
+    token = ""
+    request = None
+    country_field = "country"
 
     if isinstance(ip, str):
         try:
@@ -30,23 +34,29 @@ def geo_location(ip):
 
     if is_public:
         url = "https://ipinfo.io/" + str(address) + "/json"
+        token = os.environ.get("IPINFO_TOKEN", "").strip()
+        request = url
+        if token:
+            url = "https://api.ipinfo.io/lite/" + str(address)
+            request = http.Request(url, headers={"Authorization": "Bearer " + token})
+            country_field = "country_code"
         try:
-            with http.urlopen(url, timeout=10) as response:
+            with http.urlopen(request, timeout=10) as response:
                 if response.status == 200:
                     payload = json.load(response)
                     if (
                         isinstance(payload, dict)
-                        and isinstance(payload.get("country"), str)
-                        and payload["country"]
+                        and isinstance(payload.get(country_field), str)
+                        and payload[country_field]
                     ):
-                        location = payload
+                        location = {**payload, "country": payload[country_field]}
                     else:
                         logger.warning("Réponse sans pays pour %s", address)
                 else:
                     logger.error("Erreur HTTP %s pour %s", response.status, address)
         except HTTPError as error:
             logger.exception("Échec de géolocalisation pour %s", address)
-            if error.code == 429:
+            if error.code in (401, 403, 429):
                 raise
         except (URLError, TimeoutError, OSError, ValueError):
             logger.exception("Échec de géolocalisation pour %s", address)
@@ -62,7 +72,7 @@ if __name__ == "__main__":
 
     # Réponse locale fixe : ce test ne contacte pas Internet.
     test_ip = "8.8.8.8"
-    test_json = b'{"ip": "8.8.8.8", "country": "US"}'
+    test_json = b'{"ip": "8.8.8.8", "country": "US", "country_code": "US"}'
     test_response = BytesIO(test_json)
     location = None
     log_directory = Path(__file__).resolve().parents[1] / "logs"

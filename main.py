@@ -26,6 +26,7 @@ if __name__ == "__main__":
     updated_ips = set()
     key = None
     cursor = None
+    attempt = None
     inserted = 0
     stored_connections = None
     failed_counts = None
@@ -84,11 +85,11 @@ if __name__ == "__main__":
                 connection["status"], connection["date"], connection["user"],
                 connection["ip"], connection["invalid_user"],
             )
-            if existing_attempts[key] > 0:
-                existing_attempts[key] -= 1
-                continue
-            if stocking.insert_connection(db_connection, connection) is not None:
-                inserted += 1
+            for attempt in range(connection.get("count", 1)):
+                if existing_attempts[key] > 0:
+                    existing_attempts[key] -= 1
+                elif stocking.insert_connection(db_connection, connection) is not None:
+                    inserted += 1
         print("Connexions enregistrées :", inserted)
         stored_connections = stocking.read_connections(db_connection)
         if stored_connections is None:

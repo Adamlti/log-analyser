@@ -80,6 +80,7 @@ les champs d'origine et les champs préparés pour la future table `connection` 
 | `port` | Entier entre 1 et 65535 |
 | `method` | Méthode d'authentification, par exemple `password` ou `publickey` |
 | `invalid_user` | Booléen indiquant un échec avec utilisateur invalide |
+| `count` | Nombre de tentatives représentées par la ligne, 1 par défaut |
 
 Les lignes CRON, les notifications `Invalid user`, les erreurs PAM et les
 fermetures de connexion sont ignorées pour le comptage. Seuls les messages SSH
@@ -89,6 +90,15 @@ fermetures de connexion sont ignorées pour le comptage. Seuls les messages SSH
 Une tentative mal formée, une IP ou un port invalide, ou une date impossible
 retourne `None` et produit un avertissement.
 
+Les messages `message repeated N times: [ ... ]` sont dépliés avant de reconnaître
+la tentative. Leur champ `count` vaut N ; le message original déjà présent dans
+les logs compte séparément. `main.py` insère une ligne PostgreSQL par tentative
+représentée, sans changer le schéma de la table.
+
+Avec les répétitions, les fichiers contiennent 16 361 tentatives échouées,
+une réussite et 3 253 échecs avec utilisateur invalide. Le total de 9 092 obtenu
+auparavant concernait uniquement les lignes d'échec directes, sans les résumés.
+
 ## Géolocalisation
 
 ### `geo_location(ip)`
@@ -97,12 +107,27 @@ Utilise `urllib.request` et `json`, sans dépendance externe. Pour une IP publiq
 la fonction appelle `https://ipinfo.io/<ip>/json` avec un timeout de 10 secondes.
 Elle retourne le dictionnaire JSON si celui-ci contient un pays.
 
+Si `IPINFO_TOKEN` est défini, elle utilise plutôt
+`https://api.ipinfo.io/lite/<ip>`, avec le jeton dans l'en-tête `Authorization`.
+Le champ Lite `country_code` est remis dans `location["country"]` pour garder
+la compatibilité avec le stockage. Le lien Lite seul n'est pas une clé : il faut
+un jeton personnel obtenu dans son compte IPinfo, comme indiqué dans la
+[documentation IPinfo](https://ipinfo.io/developers/lite-api).
+
+```powershell
+$env:IPINFO_TOKEN = "votre_jeton_personnel"
+.\.venv\Scripts\python.exe main.py
+```
+
+Une requête contient une seule IP. Les appels sont séquentiels, avec réutilisation
+des pays déjà connus ; aucune liste d'IP n'est envoyée dans une même requête.
+
 Une adresse non publique n'entraîne aucun appel réseau. Une adresse invalide,
 une erreur HTTP, un timeout, une réponse JSON incorrecte ou un pays absent
 donne `None`. Les erreurs sont journalisées. La disponibilité du service réel
 n'est pas prouvée par le test simulé.
 
-Un HTTP 429 est propagé au point d'entrée : le traitement s'arrête au lieu de
+Les HTTP 401, 403 et 429 sont propagés au point d'entrée : le traitement s'arrête au lieu de
 continuer à insérer des pays inconnus à cause du quota. Les pays déjà enregistrés
 sont réutilisés lors de la reprise. L'API publique sans compte est limitée à
 1 000 appels par jour, selon la
@@ -119,7 +144,7 @@ avec ce pays. Un dictionnaire local évite les appels répétés pour la même I
 L'année utilisée est 2026, confirmée pour tous les logs. Aucune fonction ni
 aucun module supplémentaire n'est ajouté. L'exécution réelle de l'API reste
 à autoriser ; les tests utilisent des réponses simulées.
-Les 5 tests du branchement vérifient aussi l'enregistrement du pays dans
+Les tests du branchement vérifient aussi l'enregistrement du pays dans
 PostgreSQL, avec une table temporaire. Aucun pays simulé n'est gardé dans la
 table publique.
 
@@ -290,10 +315,10 @@ Les événements déjà présents sont reconnus pour reprendre un import partiel
 sans les réinsérer. Les pays manquants sont complétés par IP quand l'API fournit
 une réponse. Les occurrences répétées dans les sources restent conservées.
 
-Huit tests du pipeline passent avec une API simulée et PostgreSQL temporaire.
+Quinze tests du pipeline passent avec une API simulée et PostgreSQL temporaire.
 Ils vérifient la reprise depuis un import partiel, les pays enregistrés, l'arrêt
-sur HTTP 429, les erreurs de connexion et les graphiques. Les totaux retrouvés
-sont 9 092 échecs, une réussite pour `adminesisa` et 3 253 échecs avec utilisateur
+sur HTTP 401/403/429, les erreurs de connexion, Lite et les graphiques. Les totaux retrouvés
+sont 16 361 échecs, une réussite pour `adminesisa` et 3 253 échecs avec utilisateur
 invalide. L'aperçu `reports/dashboard_pipeline_test.png` est marqué comme test ;
 ses pays ne sont pas des résultats réels de géolocalisation.
 
@@ -317,8 +342,8 @@ Les graphiques générés dans `reports/` sont également ignorés par Git.
 
 ## Étapes suivantes
 
-- Obtenir l'accord d'envoi des IP publiques à IPinfo et reprendre la
-  géolocalisation réelle lorsque le service accepte les requêtes.
+- Configurer un jeton personnel IPinfo Lite dans `IPINFO_TOKEN` et reprendre
+  la géolocalisation réelle, une IP par requête.
 - Vérifier les pays réels dans PostgreSQL et le graphique correspondant.
 
 La consigne de rendu reste : aucun push après mardi 10.
