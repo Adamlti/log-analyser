@@ -15,8 +15,9 @@ main.py                        Pipeline complet jusqu'aux graphiques
 Chaque module est travaillé séparément, testé puis commité avant de passer au
 suivant. Les modules sont validés séparément. L'ingestion lit tous les fichiers,
 et `serving` génère les trois graphiques demandés. `main.py` assemble les modules.
-Le pipeline est vérifié localement avec une API simulée ; la géolocalisation
-réelle reste à terminer.
+Le pipeline est vérifié localement avec une API simulée et avec les pays réels
+obtenus auprès d'IPinfo Lite. La correction des copies en trop dans PostgreSQL
+reste en attente d'autorisation.
 
 ## Règles du code
 
@@ -314,13 +315,38 @@ insertion, lecture puis comptage et graphiques matplotlib.
 Les événements déjà présents sont reconnus pour reprendre un import partiel
 sans les réinsérer. Les pays manquants sont complétés par IP quand l'API fournit
 une réponse. Les occurrences répétées dans les sources restent conservées.
+Un verrou PostgreSQL empêche deux lancements de ce pipeline d'importer en même
+temps ; il est libéré à la fermeture de la connexion.
 
-Quinze tests du pipeline passent avec une API simulée et PostgreSQL temporaire.
+Dix-sept tests du pipeline passent avec une API simulée et PostgreSQL temporaire.
 Ils vérifient la reprise depuis un import partiel, les pays enregistrés, l'arrêt
-sur HTTP 401/403/429, les erreurs de connexion, Lite et les graphiques. Les totaux retrouvés
+sur HTTP 401/403/429, les erreurs de connexion, Lite, le verrou d'import et les
+graphiques. Au-delà de quinze catégories, les trois graphiques sont disposés
+verticalement pour garder les pays lisibles. Les totaux retrouvés
 sont 16 361 échecs, une réussite pour `adminesisa` et 3 253 échecs avec utilisateur
 invalide. L'aperçu `reports/dashboard_pipeline_test.png` est marqué comme test ;
 ses pays ne sont pas des résultats réels de géolocalisation.
+
+## Vérification avec les pays réels
+
+Les 1 853 IP publiques ont été interrogées auprès d'IPinfo Lite, une IP par
+requête. Leurs pays sont enregistrés dans PostgreSQL : 88 pays distincts sont
+présents. L'IP privée `10.10.33.81` n'a pas de pays et n'est pas envoyée à l'API.
+
+La comparaison des occurrences avec les quatre fichiers sources retrouve
+27 186 lignes dans `public.connection`, dont 10 824 copies en trop. Aucune
+occurrence attendue ne manque. L'origine de ces copies n'est pas confirmée.
+Les véritables répétitions indiquées dans les logs doivent être conservées.
+
+L'aperçu local `reports/dashboard_verified.png` utilise les pays réels et les
+16 362 occurrences attendues, sélectionnées en lecture seule : 16 361 échecs,
+une réussite pour `adminesisa` et 3 253 échecs avec utilisateur invalide.
+
+Le plan local `reports/duplicate_repair_plan.json` identifie précisément les
+10 824 copies proposées pour archivage dans
+`public.connection_duplicate_archive_20261110`, puis retrait de la table active.
+Il préserve les 439 lignes initiales. Cette opération n'a pas été exécutée et
+attend une autorisation explicite ; la table active conserve ses 27 186 lignes.
 
 ## Journaux
 
@@ -342,8 +368,9 @@ Les graphiques générés dans `reports/` sont également ignorés par Git.
 
 ## Étapes suivantes
 
-- Configurer un jeton personnel IPinfo Lite dans `IPINFO_TOKEN` et reprendre
-  la géolocalisation réelle, une IP par requête.
-- Vérifier les pays réels dans PostgreSQL et le graphique correspondant.
+- Après autorisation, archiver les copies identifiées puis les retirer de la
+  table active en conservant les répétitions réelles.
+- Relancer le pipeline pour vérifier qu'aucune insertion ni requête IPinfo
+  supplémentaire n'est nécessaire et générer le graphique final depuis la base.
 
 La consigne de rendu reste : aucun push après mardi 10.

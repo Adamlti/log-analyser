@@ -27,6 +27,7 @@ if __name__ == "__main__":
     key = None
     cursor = None
     attempt = None
+    import_lock_acquired = False
     inserted = 0
     stored_connections = None
     failed_counts = None
@@ -48,6 +49,12 @@ if __name__ == "__main__":
         raise SystemExit("Connexion PostgreSQL impossible")
 
     try:
+        with db_connection.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(hashtext('log_analyser_import'))")
+            import_lock_acquired = cursor.fetchone()[0]
+        if not import_lock_acquired:
+            logging.error("Un autre import est déjà en cours")
+            raise SystemExit("Un autre import est déjà en cours")
         if not stocking.create_table(db_connection):
             raise SystemExit("Création de la table connection impossible")
         stored_connections = stocking.read_connections(db_connection)

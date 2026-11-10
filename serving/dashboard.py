@@ -113,6 +113,7 @@ def create_dashboard(failed_by_country, success_by_user, invalid_user_failures):
     other_total = 0
     max_categories = 0
     width = 0
+    height = 6
     invalid_user_limit = 10
     panels = (
         (failed_by_country, "Échecs par pays", "#BC4749"),
@@ -141,8 +142,11 @@ def create_dashboard(failed_by_country, success_by_user, invalid_user_failures):
             min(len(invalid_user_failures), invalid_user_limit + 1), 1,
         )
         width = max(17, max_categories * 1.5 + 5)
-        figure = Figure(figsize=(width, 6), layout="constrained")
-        axes = figure.subplots(1, 3)
+        if max_categories > 15:
+            width = max(14, max_categories * 0.24 + 4)
+            height = 14
+        figure = Figure(figsize=(width, height), layout="constrained")
+        axes = figure.subplots(3, 1) if max_categories > 15 else figure.subplots(1, 3)
         figure.suptitle("Analyse des connexions SSH", fontsize=18, fontweight="bold")
 
         for index, axis in enumerate(axes):
