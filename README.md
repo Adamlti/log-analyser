@@ -232,10 +232,12 @@ sont affichés, puis les autres sont additionnés dans une barre
 `Autres utilisateurs`. Le compteur conserve tous les noms et le total du
 graphique inclut tous les échecs avec utilisateur invalide.
 
-`create_dashboard` retourne une figure sans ouvrir de fenêtre et sans modifier
-les comptes reçus. L'appelant peut l'enregistrer avec `.savefig(...)`. `main.py`
-fournit les connexions relues depuis PostgreSQL puis enregistre les graphiques
-dans `reports/dashboard.png`.
+`create_dashboard` retourne une figure gérée par `pyplot`, sans modifier les
+comptes reçus ni appeler `show`. L'appelant peut l'enregistrer avec
+`.savefig(...)`. `main.py` fournit les connexions relues depuis PostgreSQL,
+enregistre les graphiques dans `reports/dashboard.png`, ferme la connexion à
+la base, puis ouvre la fenêtre matplotlib avec `plt.show(block=True)`.
+Fermer cette fenêtre termine le programme.
 
 ## Tests locaux des modules
 
@@ -348,7 +350,9 @@ l'opération sont disponibles localement dans
 La relance de `main.py` sur cette base a produit zéro insertion et zéro requête
 HTTP, contrôlées avec un appel réseau interdit pendant ce test. Le graphique
 final `reports/dashboard.png` est généré depuis les données réelles de la base.
-Son rendu et les trois totaux ont été vérifiés.
+Son rendu et les trois totaux ont été vérifiés. L'ouverture de la fenêtre
+matplotlib a aussi été testée avec les données fixes du module puis via
+`main.py`, après fermeture de la connexion PostgreSQL.
 
 ## Journaux
 

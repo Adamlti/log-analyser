@@ -3,6 +3,8 @@ import logging
 from collections import Counter
 from pathlib import Path
 
+from matplotlib import pyplot as plt
+
 from ingestion import read
 from processing import extract_transform, geolocation
 from serving import dashboard
@@ -118,3 +120,5 @@ if __name__ == "__main__":
         raise
     finally:
         db_connection.close()
+
+    plt.show(block=True)

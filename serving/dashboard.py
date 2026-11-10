@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from textwrap import fill
 
-from matplotlib.figure import Figure
+from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 
@@ -96,7 +96,7 @@ def count_invalid_user_failures(connections):
 
 
 def create_dashboard(failed_by_country, success_by_user, invalid_user_failures):
-    """Retourner une figure avec les trois graphiques, sans ouvrir de fenêtre."""
+    """Retourner les trois graphiques ; l'appelant déclenche l'affichage."""
     figure = None
     axes = None
     axis = None
@@ -145,7 +145,7 @@ def create_dashboard(failed_by_country, success_by_user, invalid_user_failures):
         if max_categories > 15:
             width = max(14, max_categories * 0.24 + 4)
             height = 14
-        figure = Figure(figsize=(width, height), layout="constrained")
+        figure = plt.figure(figsize=(width, height), layout="constrained")
         axes = figure.subplots(3, 1) if max_categories > 15 else figure.subplots(1, 3)
         figure.suptitle("Analyse des connexions SSH", fontsize=18, fontweight="bold")
 
