@@ -30,6 +30,8 @@ if __name__ == "__main__":
     cursor = None
     attempt = None
     import_lock_acquired = False
+    processed = 0
+    already_stored = 0
     inserted = 0
     stored_connections = None
     failed_counts = None
@@ -41,8 +43,11 @@ if __name__ == "__main__":
 
     log_directory.mkdir(exist_ok=True)
     logging.basicConfig(
-        filename=log_directory / "pipeline.log", encoding="utf-8",
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(log_directory / "pipeline.log", encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
     )
     with config_path.open(encoding="utf-8") as stream:
         config = json.load(stream)
@@ -78,6 +83,7 @@ if __name__ == "__main__":
             connection = extract_transform.transform(record, year)
             if connection is None:
                 continue
+            processed += connection.get("count", 1)
             if connection["ip"] not in countries:
                 location = geolocation.geo_location(connection["ip"])
                 countries[connection["ip"]] = location["country"] if location else None
@@ -97,9 +103,13 @@ if __name__ == "__main__":
             for attempt in range(connection.get("count", 1)):
                 if existing_attempts[key] > 0:
                     existing_attempts[key] -= 1
+                    already_stored += 1
                 elif stocking.insert_connection(db_connection, connection) is not None:
                     inserted += 1
-        print("Connexions enregistrées :", inserted)
+        print("Lignes lues :", len(rows))
+        print("Tentatives traitées :", processed)
+        print("Tentatives déjà en base :", already_stored)
+        print("Nouvelles connexions enregistrées :", inserted)
         stored_connections = stocking.read_connections(db_connection)
         if stored_connections is None:
             raise SystemExit("Lecture de la table connection impossible")

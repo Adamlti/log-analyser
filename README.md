@@ -53,11 +53,19 @@ Prérequis : Python 3.13 ou plus récent, PostgreSQL, [uv](https://docs.astral.s
    uv run python main.py
    ```
 
-Le programme affiche les totaux dans le terminal, enregistre l'image dans `reports/dashboard.png` et ouvre les graphiques dans une fenêtre. Les messages de diagnostic sont écrits dans `logs/pipeline.log`.
+Le programme affiche chaque fichier lu et son nombre de lignes, puis les totaux dans le terminal. Il distingue les tentatives traitées, celles déjà en base et les nouvelles insertions : zéro nouvelle insertion ne signifie pas que les fichiers ont été ignorés. Il enregistre l'image dans `reports/dashboard.png` et ouvre les graphiques dans une fenêtre. Les messages de diagnostic sont affichés dans le terminal et écrits dans `logs/pipeline.log`.
 
 ## Résultats sur les fichiers fournis
 
 Les quatre journaux contiennent **65 565 lignes**. L'analyse des tentatives SSH donne **16 362 connexions** : **16 361 échecs** et **une réussite** pour `adminesisa`. Parmi les échecs, **3 253** concernent un utilisateur invalide. La géolocalisation réalisée avec IPinfo Lite a identifié **88 pays** distincts.
+
+| Fichier | Lignes lues | Tentatives SSH, répétitions comprises |
+| --- | ---: | ---: |
+| `auth.log.1` | 14 812 | 3 353 |
+| `auth.log.2` | 17 565 | 3 363 |
+| `auth.log.3.gz` | 18 382 | 4 749 |
+| `auth.log.4.gz` | 14 806 | 4 897 |
+| **Total** | **65 565** | **16 362** |
 
 Les trois graphiques permettent de voir la répartition des échecs par pays, les utilisateurs ayant réussi à se connecter et les noms invalides les plus fréquents.
 

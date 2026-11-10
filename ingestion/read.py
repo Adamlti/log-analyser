@@ -15,6 +15,8 @@ def ingest(path: str):
     file_path = None
     openner = None
     f = None
+    file_rows = []
+    files_read = 0
 
     if isinstance(path, (str, os.PathLike)):
         try:
@@ -34,10 +36,14 @@ def ingest(path: str):
                     else open(file_path, encoding="utf-8")
                 )
                 with openner as f:
-                    rows.extend(f.readlines())
+                    file_rows = f.readlines()
+                rows.extend(file_rows)
+                files_read += 1
+                logger.info("Fichier lu : %s (%d lignes)", file, len(file_rows))
             except (OSError, EOFError, UnicodeError, zlib.error):
                 logger.exception("Lecture du fichier impossible : %s", file_path)
 
+    logger.info("Lecture terminée : %d fichiers, %d lignes", files_read, len(rows))
     return rows
 
 if __name__ == "__main__":
